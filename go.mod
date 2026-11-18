@@ -1,3 +1,3 @@
-module transcoder/main
+module github.com/antoniguss/transcoder/main
 
 go 1.27.4

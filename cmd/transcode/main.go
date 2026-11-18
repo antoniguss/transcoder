@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"time"
+	"transcoder/main/internal/transcode"
 )
 
 func main() {
@@ -20,7 +22,7 @@ func main() {
 func run(ctx context.Context, w io.Writer, args []string) error {
 	fs := flag.NewFlagSet("transcode", flag.ContinueOnError)
 
-	var spec TranscoderSpec
+	var spec transcode.TranscoderSpec
 	fs.StringVar(&spec.Input, "i", "", "input file path")
 	fs.StringVar(&spec.Output, "o", "", "output file path")
 	fs.IntVar(&spec.Width, "w", 0, "output width in pixels (0 = auto)")
@@ -40,5 +42,11 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 		return fmt.Errorf("invalid arguments: %w", err)
 	}
 
-	return startTranscode(ctx, spec)
+	return transcode.Run(ctx, spec, func(p transcode.Progress) {
+		if f, ok := p.Fraction(); ok {
+			fmt.Fprintf(w, "%.0f%%\n", f*100)
+		} else {
+			fmt.Fprintf(w, "processed %s\n", p.Processed.Round(time.Second))
+		}
+	})
 }
