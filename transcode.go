@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"os/exec"
 	"strconv"
@@ -50,24 +51,23 @@ func (s TranscoderSpec) Validate() error {
 	var errs []error
 
 	if s.Input == "" {
-		fmt.Printf("s.Input: %v\n", s.Input)
 		errs = append(errs, errors.New("input file is required"))
 	}
 	if s.Output == "" {
-		errs = append(errs, errors.New("input file is required"))
+		errs = append(errs, errors.New("output file is required"))
 	}
 	if s.Width < 0 {
-		errs = append(errs, fmt.Errorf("width must me >0, got %d", s.Width))
+		errs = append(errs, fmt.Errorf("width must me >= 0, got %d", s.Width))
 	}
 	if s.Height < 0 {
-		errs = append(errs, fmt.Errorf("height must me >0, got %d", s.Height))
+		errs = append(errs, fmt.Errorf("height must me >= 0, got %d", s.Height))
 	}
 	if s.Bitrate < 0 {
-		errs = append(errs, fmt.Errorf("bitrate must me >0, got %d", s.Bitrate))
+		errs = append(errs, fmt.Errorf("bitrate must me >= 0, got %d", s.Bitrate))
 	}
 
 	if !s.Preset.Validate() {
-		errs = append(errs, fmt.Errorf("invalid preset, got %d", s.Preset))
+		errs = append(errs, fmt.Errorf("invalid preset, got %s", s.Preset))
 	}
 
 	return errors.Join(errs...)
@@ -101,7 +101,7 @@ func startTranscode(ctx context.Context, spec TranscoderSpec) (err error) {
 
 	total, err := getDuration(ctx, spec.Input)
 	if err != nil {
-		log.Println("probe to get duration: %w", err)
+		log.Printf("probe to get duration: %w", err)
 	}
 
 	onProgress := func(processed time.Duration) {
@@ -117,12 +117,13 @@ func startTranscode(ctx context.Context, spec TranscoderSpec) (err error) {
 	if err != nil {
 		return
 	}
-	log.Println("Transcoding complete")
 
 	return
 }
 
 func buildArgs(spec TranscoderSpec) (args []string) {
+
+	args = append(args, "-y", "-nostdin", "-loglevel", "error", "-nostats", "-progress", "pipe:1")
 
 	args = append(args, "-i", spec.Input)
 	if spec.Bitrate > 0 {
@@ -145,7 +146,6 @@ func buildArgs(spec TranscoderSpec) (args []string) {
 	}
 
 	args = append(args, spec.Output)
-	args = append(args, "-y", "-nostdin", "-loglevel", "error", "-nostats", "-progress", "pipe:1")
 	return args
 }
 
@@ -166,10 +166,24 @@ func runFFmpeg(ctx context.Context, args []string, onProgress func(time.Duration
 		return fmt.Errorf("starting ffmpeg: %w", err)
 	}
 
+	if err = parseProgress(stdout, onProgress); err != nil {
+		log.Printf("progress tracking stopped: %v", err)
+	}
+
+	if err := cmd.Wait(); err != nil {
+		return fmt.Errorf("ffmpeg: %w: %s", err, strings.TrimSpace(stderr.String()))
+	}
+
+	return
+}
+
+func parseProgress(stdout io.ReadCloser, onProgress func(time.Duration)) error {
+	// If an error happens empty out stdout
+	defer io.Copy(io.Discard, stdout)
+
 	scanner := bufio.NewScanner(stdout)
 	var latest time.Duration
 	for scanner.Scan() {
-		// log.Printf("scanner.Text(): %v\n", scanner.Text())
 		key, value, ok := strings.Cut(scanner.Text(), "=")
 		if !ok {
 			continue
@@ -185,12 +199,7 @@ func runFFmpeg(ctx context.Context, args []string, onProgress func(time.Duration
 		}
 	}
 
-	log.Println("Waiting")
-	if err := cmd.Wait(); err != nil {
-		log.Fatal(err)
-	}
-
-	return
+	return scanner.Err()
 }
 
 func getDuration(ctx context.Context, input string) (time.Duration, error) {
@@ -199,7 +208,7 @@ func getDuration(ctx context.Context, input string) (time.Duration, error) {
 		"-v", "error",
 		"-show_entries", "format=duration", "-of", "json",
 		input)
-	fmt.Printf("cmd: %v\n", cmd)
+	log.Printf("cmd: %v\n", cmd)
 
 	data, err := cmd.Output()
 	if err != nil {
@@ -217,7 +226,7 @@ func getDuration(ctx context.Context, input string) (time.Duration, error) {
 
 	secs, err := strconv.ParseFloat(out.Format.Duration, 64)
 	if err != nil {
-		return 0, nil
+		return 0, err
 	}
 
 	return time.Duration(secs * float64(time.Second)), nil
