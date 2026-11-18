@@ -1,20 +1,39 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
+	"log"
+	"os"
+)
+
+var (
+	input   = flag.String("i", "", "input path to video file, relative or absolute")
+	output  = flag.String("o", "", "output path to video file, relative or absolute")
+	bitrate = flag.Int("b", -1, "bitrate of destination file")
 )
 
 func main() {
 
-	pathPtr := flag.String("path", "", "A path to the video file. Relative or absolute.")
-	bitratePtr := flag.Int("bitrate", -1, "Bitrate of the destination video.")
-	destPathPtr := flag.String("destPath", "", "A path to the destination video file. Relative or absolute.")
-
 	flag.Parse()
-	fmt.Printf("path: %v\n", *pathPtr)
-	fmt.Printf("bitrate: %v\n", *bitratePtr)
-	fmt.Printf("destination path: %v\n", *destPathPtr)
+	if *input == "" || *output == "" {
+		log.Println("Usage: -i <input path> -o <output path>")
+		return
+	}
 
-	fmt.Println("Hello, world!")
+	if err := openInputFile(); err != nil {
+		log.Println(fmt.Errorf("main: opening input file failed: %w", err))
+		return
+	}
+
+}
+
+func openInputFile() (err error) {
+	if _, err = os.Stat(*input); errors.Is(err, os.ErrNotExist) {
+		err = fmt.Errorf("main: opening input failed: %w", err)
+		return
+	}
+
+	return
 }
