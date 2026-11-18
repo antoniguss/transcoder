@@ -8,7 +8,8 @@ import (
 	"io"
 	"os"
 	"time"
-	"transcoder/main/internal/transcode"
+
+	"github.com/antoniguss/transcoder/main/internal/transcode"
 )
 
 func main() {
