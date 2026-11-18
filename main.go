@@ -26,6 +26,7 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 	fs.IntVar(&spec.Width, "w", 0, "output width in pixels (0 = auto)")
 	fs.IntVar(&spec.Height, "h", 0, "output height in pixels (0 = auto)")
 	fs.IntVar(&spec.Bitrate, "b", 0, "output bitrate (0 = auto)")
+	fs.StringVar((*string)(&spec.Preset), "p", "", "preset (e.g fast, slow)")
 
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {

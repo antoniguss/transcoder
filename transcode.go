@@ -1,29 +1,49 @@
 package main
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
-	"math/rand"
-	"net"
-	"os"
-	"path"
-	"regexp"
+	"os/exec"
 	"strconv"
 	"strings"
-
-	ffmpeg_go "github.com/u2takey/ffmpeg-go"
+	"time"
 )
 
 type TranscoderSpec struct {
 	Input   string
 	Output  string
-	Width   int // pixels; 0 = keep aspect ration
-	Height  int // pixels; 0 = keep aspect ration
-	Bitrate int // bits per second; 0 = encoder default
+	Width   int    // pixels; 0 = keep aspect ration
+	Height  int    // pixels; 0 = keep aspect ration
+	Bitrate int    // bits per second; 0 = encoder default
+	Preset  Preset //
 
+}
+
+type Preset string
+
+const (
+	PresetUltraFast Preset = "ultrafast"
+	PresetSuperFast Preset = "superfast"
+	PresetVeryFast  Preset = "veryfast"
+	PresetFaster    Preset = "faster"
+	PresetFast      Preset = "fast"
+	PresetMedium    Preset = "medium"
+	PresetSlow      Preset = "slow"
+	PresetSlower    Preset = "slower"
+	PresetVerySlow  Preset = "veryslow"
+)
+
+func (p Preset) Validate() bool {
+	switch p {
+	case "", PresetUltraFast, PresetSuperFast, PresetVeryFast, PresetFaster, PresetFast, PresetMedium, PresetSlow, PresetSlower, PresetVerySlow:
+		return true
+	}
+	return false
 }
 
 func (s TranscoderSpec) Validate() error {
@@ -46,109 +66,160 @@ func (s TranscoderSpec) Validate() error {
 		errs = append(errs, fmt.Errorf("bitrate must me >0, got %d", s.Bitrate))
 	}
 
+	if !s.Preset.Validate() {
+		errs = append(errs, fmt.Errorf("invalid preset, got %d", s.Preset))
+	}
+
 	return errors.Join(errs...)
 
 }
 
+type State string
+
+const (
+	StateSubmitted   State = "submitted"
+	StateTranscoding State = "transcoding"
+	StateDone        State = "done"
+)
+
+type Progress struct {
+	Processed time.Duration
+	Total     time.Duration
+}
+
+func (p Progress) Fraction() (float64, bool) {
+	if p.Total <= 0 {
+		return 0, false
+	}
+
+	return min(float64(p.Processed)/float64(p.Total), 1), true
+}
+
 func startTranscode(ctx context.Context, spec TranscoderSpec) (err error) {
-	a, err := ffmpeg_go.Probe(spec.Input)
+
+	args := buildArgs(spec)
+
+	total, err := getDuration(ctx, spec.Input)
 	if err != nil {
-		err = fmt.Errorf("transcoder: probing input file failed: %w", err)
-		return
+		log.Println("probe to get duration: %w", err)
 	}
 
-	totalDuration, err := probeDuration(a)
-	if err != nil {
-		err = fmt.Errorf("transcoder: probing for duration of input file failed: %w", err)
-		return
+	onProgress := func(processed time.Duration) {
+		p := Progress{Processed: processed, Total: total}
+		if f, ok := p.Fraction(); ok {
+			fmt.Printf("%.0f%%\n", f*100)
+		} else {
+			fmt.Printf("processed %s\n", processed.Round(time.Second))
+		}
 	}
 
-	args := ffmpeg_go.KwArgs{}
+	err = runFFmpeg(ctx, args, onProgress)
+	if err != nil {
+		return
+	}
+	log.Println("Transcoding complete")
+
+	return
+}
+
+func buildArgs(spec TranscoderSpec) (args []string) {
+
+	args = append(args, "-i", spec.Input)
 	if spec.Bitrate > 0 {
-		args["b:v"] = spec.Bitrate
+		args = append(args, "-b:v", strconv.Itoa(spec.Bitrate))
 	}
 
-	stream := ffmpeg_go.Input(spec.Input)
+	if spec.Width == 0 {
+		spec.Width = -2
+	}
+	if spec.Height == 0 {
+		spec.Height = -2
+	}
+
 	if spec.Width > 0 || spec.Height > 0 {
-		scale := fmt.Sprintf("%d:%d", spec.Width, spec.Height)
-		stream = stream.Filter("scale", ffmpeg_go.Args{scale})
+		args = append(args, "-vf", fmt.Sprintf("scale=%d:%d", spec.Width, spec.Height))
 	}
-	err = stream.
-		Output(spec.Output, args).
-		GlobalArgs("-progress", "unix://"+TempSock(totalDuration)).
-		OverWriteOutput().Run()
 
+	if spec.Preset != "" {
+		args = append(args, "-preset", string(spec.Preset))
+	}
+
+	args = append(args, spec.Output)
+	args = append(args, "-y", "-nostdin", "-loglevel", "error", "-nostats", "-progress", "pipe:1")
+	return args
+}
+
+func runFFmpeg(ctx context.Context, args []string, onProgress func(time.Duration)) (err error) {
+
+	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
+	log.Printf("cmd: %v\n", cmd)
+
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	stdout, err := cmd.StdoutPipe()
 	if err != nil {
+		return fmt.Errorf("creating stdout pipe: %w", err)
+	}
 
-		err = fmt.Errorf("transcoder: transcoding with parameters %v failed: %w", args, err)
-		return
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("starting ffmpeg: %w", err)
+	}
+
+	scanner := bufio.NewScanner(stdout)
+	var latest time.Duration
+	for scanner.Scan() {
+		// log.Printf("scanner.Text(): %v\n", scanner.Text())
+		key, value, ok := strings.Cut(scanner.Text(), "=")
+		if !ok {
+			continue
+		}
+
+		switch key {
+		case "out_time_us":
+			if us, err := strconv.ParseInt(value, 10, 64); err == nil {
+				latest = time.Duration(us) * time.Microsecond
+			}
+		case "progress":
+			onProgress(latest)
+		}
+	}
+
+	log.Println("Waiting")
+	if err := cmd.Wait(); err != nil {
+		log.Fatal(err)
 	}
 
 	return
 }
-func TempSock(totalDuration float64) string {
-	// serve
 
-	sockFileName := path.Join(os.TempDir(), fmt.Sprintf("%d_sock", rand.Int()))
-	l, err := net.Listen("unix", sockFileName)
+func getDuration(ctx context.Context, input string) (time.Duration, error) {
+
+	cmd := exec.CommandContext(ctx, "ffprobe",
+		"-v", "error",
+		"-show_entries", "format=duration", "-of", "json",
+		input)
+	fmt.Printf("cmd: %v\n", cmd)
+
+	data, err := cmd.Output()
 	if err != nil {
-		panic(err)
+		return 0, fmt.Errorf("reading ffprobe: %w", err)
 	}
 
-	go func() {
-		re := regexp.MustCompile(`out_time_ms=(\d+)`)
-		fd, err := l.Accept()
-		if err != nil {
-			log.Fatal("accept error:", err)
-		}
-		buf := make([]byte, 16)
-		data := ""
-		progress := ""
-		for {
-			_, err := fd.Read(buf)
-			if err != nil {
-				return
-			}
-			data += string(buf)
-			a := re.FindAllStringSubmatch(data, -1)
-			cp := ""
-			if len(a) > 0 && len(a[len(a)-1]) > 0 {
-				c, _ := strconv.Atoi(a[len(a)-1][len(a[len(a)-1])-1])
-				cp = fmt.Sprintf("%.2f", float64(c)/totalDuration/1000000)
-			}
-			if strings.Contains(data, "progress=end") {
-				cp = "done"
-			}
-			if cp == "" {
-				cp = ".0"
-			}
-			if cp != progress {
-				progress = cp
-				fmt.Println("progress: ", progress)
-			}
-		}
-	}()
-
-	return sockFileName
-}
-
-type probeFormat struct {
-	Duration string `json:"duration"`
-}
-
-type probeData struct {
-	Format probeFormat `json:"format"`
-}
-
-func probeDuration(a string) (float64, error) {
-	pd := probeData{}
-	err := json.Unmarshal([]byte(a), &pd)
-	if err != nil {
-		return 0, err
+	var out struct {
+		Format struct {
+			Duration string `json:"duration"`
+		} `json:"format"`
 	}
-	f, err := strconv.ParseFloat(pd.Format.Duration, 64)
-	if err != nil {
-		return 0, err
+	if err := json.Unmarshal(data, &out); err != nil {
+		return 0, fmt.Errorf("parsing ffprobe output: %w", err)
 	}
-	return f, nil
+
+	secs, err := strconv.ParseFloat(out.Format.Duration, 64)
+	if err != nil {
+		return 0, nil
+	}
+
+	return time.Duration(secs * float64(time.Second)), nil
+
 }
