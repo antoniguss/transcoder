@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"math/rand"
@@ -15,8 +17,41 @@ import (
 	ffmpeg_go "github.com/u2takey/ffmpeg-go"
 )
 
-func startJob(input string, output string, bitrate int, width int, height int) (err error) {
-	a, err := ffmpeg_go.Probe(input)
+type TranscoderSpec struct {
+	Input   string
+	Output  string
+	Width   int // pixels; 0 = keep aspect ration
+	Height  int // pixels; 0 = keep aspect ration
+	Bitrate int // bits per second; 0 = encoder default
+
+}
+
+func (s TranscoderSpec) Validate() error {
+	var errs []error
+
+	if s.Input == "" {
+		fmt.Printf("s.Input: %v\n", s.Input)
+		errs = append(errs, errors.New("input file is required"))
+	}
+	if s.Output == "" {
+		errs = append(errs, errors.New("input file is required"))
+	}
+	if s.Width < 0 {
+		errs = append(errs, fmt.Errorf("width must me >0, got %d", s.Width))
+	}
+	if s.Height < 0 {
+		errs = append(errs, fmt.Errorf("height must me >0, got %d", s.Height))
+	}
+	if s.Bitrate < 0 {
+		errs = append(errs, fmt.Errorf("bitrate must me >0, got %d", s.Bitrate))
+	}
+
+	return errors.Join(errs...)
+
+}
+
+func startTranscode(ctx context.Context, spec TranscoderSpec) (err error) {
+	a, err := ffmpeg_go.Probe(spec.Input)
 	if err != nil {
 		err = fmt.Errorf("transcoder: probing input file failed: %w", err)
 		return
@@ -29,21 +64,22 @@ func startJob(input string, output string, bitrate int, width int, height int) (
 	}
 
 	args := ffmpeg_go.KwArgs{}
-	if bitrate > 0 {
-		args["b:v"] = bitrate
+	if spec.Bitrate > 0 {
+		args["b:v"] = spec.Bitrate
 	}
 
-	stream := ffmpeg_go.Input(input)
-	if width > 0 || height > 0 {
-		scale := fmt.Sprintf("%d:%d", width, height)
+	stream := ffmpeg_go.Input(spec.Input)
+	if spec.Width > 0 || spec.Height > 0 {
+		scale := fmt.Sprintf("%d:%d", spec.Width, spec.Height)
 		stream = stream.Filter("scale", ffmpeg_go.Args{scale})
 	}
 	err = stream.
-		Output(output, args).
+		Output(spec.Output, args).
 		GlobalArgs("-progress", "unix://"+TempSock(totalDuration)).
 		OverWriteOutput().Run()
 
 	if err != nil {
+
 		err = fmt.Errorf("transcoder: transcoding with parameters %v failed: %w", args, err)
 		return
 	}

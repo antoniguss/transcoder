@@ -1,39 +1,43 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"flag"
 	"fmt"
-	"log"
-)
-
-var (
-	input   = flag.String("i", "", "input path to video file, relative or absolute")
-	output  = flag.String("o", "", "output path to video file, relative or absolute")
-	bitrate = flag.Int("b", -1, "bitrate of destination file")
-	width   = flag.Int("w", -1, "width of destination file")
-	height  = flag.Int("l", -1, "height of destination file")
+	"io"
+	"os"
 )
 
 func main() {
+	ctx := context.Background()
+	if err := run(ctx, os.Stdout, os.Args[1:]); err != nil {
+		fmt.Fprintf(os.Stderr, "%s\n", err)
+		os.Exit(1)
+	}
+}
 
-	flag.Parse()
-	if *input == "" || *output == "" {
-		log.Println("Usage: -i <input path> -o <output path>")
-		return
+func run(ctx context.Context, w io.Writer, args []string) error {
+	fs := flag.NewFlagSet("transcode", flag.ContinueOnError)
+
+	var spec TranscoderSpec
+	fs.StringVar(&spec.Input, "i", "", "input file path")
+	fs.StringVar(&spec.Output, "o", "", "output file path")
+	fs.IntVar(&spec.Width, "w", 0, "output width in pixels (0 = auto)")
+	fs.IntVar(&spec.Height, "h", 0, "output height in pixels (0 = auto)")
+	fs.IntVar(&spec.Bitrate, "b", 0, "output bitrate (0 = auto)")
+
+	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return nil
+		}
+		return err
 	}
 
-	if *width < 0 {
-		*width = -1
+	if err := spec.Validate(); err != nil {
+		fs.Usage()
+		return fmt.Errorf("invalid arguments: %w", err)
 	}
 
-	if *height < 0 {
-		*height = -1
-	}
-
-	// Build args
-	if err := startJob(*input, *output, *bitrate, *width, *height); err != nil {
-		log.Println(fmt.Errorf("main: running job failed: %w"), err)
-		return
-	}
-
+	return startTranscode(ctx, spec)
 }
