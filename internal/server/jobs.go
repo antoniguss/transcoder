@@ -4,6 +4,8 @@ import (
 	"crypto/rand"
 	"errors"
 	"sync"
+
+	"github.com/antoniguss/transcoder/main/internal/transcode"
 )
 
 type JobState string
@@ -12,13 +14,20 @@ const (
 	StateSubmitted   JobState = "submitted"
 	StateTranscoding JobState = "transcoding"
 	StateDone        JobState = "done"
+	StateError       JobState = "error"
 )
 
 type JobID string
 
+func NewJobID() JobID {
+	return JobID(rand.Text())
+}
+
 type Job struct {
-	ID    JobID    `json:"id"`
-	State JobState `json:"state"`
+	ID           JobID                    `json:"id"`
+	State        JobState                 `json:"state"`
+	OriginalName string                   `json:"file"`
+	Spec         transcode.TranscoderSpec `json:"spec"`
 }
 
 type JobStore struct {
@@ -51,11 +60,13 @@ func (store *JobStore) SetState(id JobID, state JobState) error {
 	return nil
 }
 
-func (store *JobStore) AddJob() Job {
-	job := Job{ID: JobID(rand.Text()), State: StateSubmitted}
-
+func (store *JobStore) AddJob(job Job) error {
 	store.mu.Lock()
 	defer store.mu.Unlock()
+
+	if _, has := store.jobs[job.ID]; has {
+		return errors.New("duplicate job")
+	}
 	store.jobs[job.ID] = job
-	return job
+	return nil
 }

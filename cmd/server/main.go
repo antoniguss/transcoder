@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"time"
 
 	"github.com/antoniguss/transcoder/main/internal/server"
@@ -26,11 +27,17 @@ func main() {
 }
 
 func run(ctx context.Context, w io.Writer, args []string) error {
+	logger := slog.New(slog.NewTextHandler(w, nil))
+
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt)
 	defer cancel()
 
 	fs := flag.NewFlagSet("server", flag.ContinueOnError)
+
 	addr := fs.String("addr", ":8080", "address to listen on")
+
+	dataDir := fs.String("data-dir", "data", "directory for uploads and outputs")
+
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil
@@ -38,17 +45,28 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 		return err
 	}
 
-	logger := slog.New(slog.NewTextHandler(w, nil))
+	absDir, err := filepath.Abs(*dataDir)
+	if err != nil {
+		return fmt.Errorf("resolving data dir: %w", err)
+	}
+
+	if err := os.Mkdir(absDir, 0o750); err != nil {
+		return fmt.Errorf("creating data dir: %w", err)
+	}
+
+	logger.Info("using data dir", "path", absDir)
+
 	jobStore := server.NewJobStore()
-	server := &http.Server{
+	runner := NewRunner(ctx, jobStore, logger, 5)
+	srv := &http.Server{
 		Addr:    *addr,
-		Handler: newHandler(logger, jobStore),
+		Handler: newHandler(logger, jobStore, runner, absDir),
 	}
 
 	errCh := make(chan error, 1)
 	go func() {
 		logger.Info("listening", "addr", *addr)
-		errCh <- server.ListenAndServe()
+		errCh <- srv.ListenAndServe()
 	}()
 
 	select {
@@ -58,7 +76,11 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 	}
 
 	logger.Info("shutting down")
-	shutdownCtx, cancel := context.WithTimeout(ctx, time.Second*10)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 	defer cancel()
-	return server.Shutdown(shutdownCtx)
+
+	srv.Shutdown(shutdownCtx)
+	runner.Wait()
+
+	return nil
 }
