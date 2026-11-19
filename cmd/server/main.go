@@ -10,6 +10,9 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"time"
+
+	"github.com/antoniguss/transcoder/main/internal/server"
 )
 
 func main() {
@@ -36,14 +39,26 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 	}
 
 	logger := slog.New(slog.NewTextHandler(w, nil))
+	jobStore := server.NewJobStore()
 	server := &http.Server{
 		Addr:    *addr,
-		Handler: newHandler(logger),
+		Handler: newHandler(logger, jobStore),
 	}
 
-	if err := server.ListenAndServe(); err != nil {
-		return fmt.Errorf("running server: %w", err)
+	errCh := make(chan error, 1)
+	go func() {
+		logger.Info("listening", "addr", *addr)
+		errCh <- server.ListenAndServe()
+	}()
+
+	select {
+	case err := <-errCh:
+		return fmt.Errorf("listen: %w", err)
+	case <-ctx.Done():
 	}
 
-	return nil
+	logger.Info("shutting down")
+	shutdownCtx, cancel := context.WithTimeout(ctx, time.Second*10)
+	defer cancel()
+	return server.Shutdown(shutdownCtx)
 }
