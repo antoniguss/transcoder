@@ -6,13 +6,12 @@ import (
 )
 
 type TranscoderSpec struct {
-	Input   string
-	Output  string
-	Width   int    // pixels; 0 = keep aspect ration
-	Height  int    // pixels; 0 = keep aspect ration
-	Bitrate int    // bits per second; 0 = encoder default
-	Preset  Preset //
-
+	Input   string `json:"input"`
+	Output  string `json:"output"`
+	Width   int    `json:"width"`   // pixels; 0 = keep aspect ration
+	Height  int    `json:"height"`  // pixels; 0 = keep aspect ration
+	Bitrate int    `json:"bitrate"` // bits per second; 0 = encoder default
+	Preset  Preset `json:"preset"`
 }
 
 type Preset string
