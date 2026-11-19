@@ -39,13 +39,13 @@ func handleUpload(logger *slog.Logger, jobStore *server.JobStore) http.Handler {
 			panic(fmt.Errorf("invalid file extension, got file %s", header.Filename))
 		}
 
-		id := jobStore.AddJob()
+		job := jobStore.AddJob()
 
 		// Store file
 		_ = file
 
 		w.Header().Set("Content-Type", "application/json")
-		res := UploadResponse{Id: uint64(id)}
+		res := UploadResponse{ID: string(job.ID)}
 
 		json.NewEncoder(w).Encode(res)
 

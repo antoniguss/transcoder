@@ -1,58 +1,61 @@
 package server
 
-import "crypto/rand"
+import (
+	"crypto/rand"
+	"errors"
+	"sync"
+)
 
+type JobState string
 
-type JobState string const (
+const (
 	StateSubmitted   JobState = "submitted"
 	StateTranscoding JobState = "transcoding"
 	StateDone        JobState = "done"
 )
 
-type JobID uint64
+type JobID string
 
 type Job struct {
-	Id    JobID
-	State JobState
+	ID    JobID    `json:"id"`
+	State JobState `json:"state"`
 }
 
-type JobStore map[JobID]Job
-
-func (store JobStore) GetByID(id JobID) (val Job, has bool) {
-	val, has = store[id]
-	return
-}
-
-func (store JobStore) SetState(id JobID, state JobState) (set bool) {
-	job, has := store[id]
-	if !has {
-		return false
-	}
-
-	job.State = state
-	return true
-}
-
-func (store JobStore) getNewID() JobID {
-
-	id := JobID(rand.Uint64())
-	if _, has := store.GetByID(id); has {
-		return store.getNewID()
-	}
-
-	return id
-
-}
-
-func (store JobStore) AddJob() JobID {
-	id := store.getNewID()
-	job := Job{Id: id, State: StateSubmitted}
-
-	store[id] = job
-	return id
+type JobStore struct {
+	mu   sync.Mutex
+	jobs map[JobID]Job
 }
 
 func NewJobStore() *JobStore {
-	jobStore := make(JobStore)
-	return &jobStore
+	return &JobStore{jobs: make(map[JobID]Job)}
+}
+
+func (store *JobStore) GetByID(id JobID) (Job, bool) {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	val, has := store.jobs[id]
+	return val, has
+}
+
+func (store *JobStore) SetState(id JobID, state JobState) error {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+
+	job, has := store.jobs[id]
+	if !has {
+		return errors.New("job not found")
+	}
+
+	job.State = state
+	store.jobs[id] = job
+	return nil
+}
+
+func (store *JobStore) AddJob() Job {
+	job := Job{ID: JobID(rand.Text()), State: StateSubmitted}
+
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	store.jobs[job.ID] = job
+	return job
 }
