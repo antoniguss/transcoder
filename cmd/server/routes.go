@@ -27,12 +27,12 @@ func newHandler(
 	mux := http.NewServeMux()
 	mux.Handle("GET /healthz", handleHealths())
 	mux.Handle("POST /upload", handleUpload(logger, jobStore, runner, dataDir))
-	mux.Handle("GET /jobs/{id}", handleStatus(jobStore))
+	mux.Handle("GET /jobs/{id}", handleStatus(logger, jobStore))
 
 	return mux
 }
 
-func handleStatus(jobStore *server.JobStore) http.Handler {
+func handleStatus(logger *slog.Logger, jobStore *server.JobStore) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
 		id := r.PathValue("id")
@@ -49,9 +49,17 @@ func handleStatus(jobStore *server.JobStore) http.Handler {
 
 		// TODO: return progress
 		res := StatusResponse{State: string(job.State), Progress: 0.0}
-		json.NewEncoder(w).Encode(res)
+		writeJSON(w, logger, http.StatusOK, res)
 
 	})
+}
+
+func writeJSON(w http.ResponseWriter, logger *slog.Logger, status int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		logger.Warn("writing response", "err", err)
+	}
 }
 
 type StatusResponse struct {
@@ -89,23 +97,33 @@ func (runner *Runner) Submit(job server.Job) error {
 	}
 }
 
-func (runner *Runner) worker(ctx context.Context) error {
+func (runner *Runner) worker(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			return nil
+			return
 		case job, ok := <-runner.jobs:
 			if !ok {
-				return nil // channel close, exit
+				return // channel close, exit
 			}
 
-			runner.store.SetState(job.ID, server.StateTranscoding)
+			if err := runner.store.SetState(job.ID, server.StateTranscoding); err != nil {
+				runner.logger.Error("changing state", "err", err, "job_id", job.ID)
+			}
+
 			if err := processTranscode(ctx, job); err != nil {
 				runner.logger.Error("worker transcoding", "err", err)
-				runner.store.SetState(job.ID, server.StateError)
+
+				if err := runner.store.SetState(job.ID, server.StateError); err != nil {
+					runner.logger.Error("changing state", "err", err, "job_id", job.ID)
+				}
+
 			}
 
-			runner.store.SetState(job.ID, server.StateDone)
+			if err := runner.store.SetState(job.ID, server.StateDone); err != nil {
+				runner.logger.Error("changing state", "err", err, "job_id", job.ID)
+			}
+
 		}
 	}
 
@@ -197,10 +215,9 @@ func handleUpload(logger *slog.Logger, jobStore *server.JobStore, runner *Runner
 			http.Error(w, "error while submiting job", http.StatusInternalServerError)
 		}
 
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Location", "/jobs/"+string(job.ID))
 		res := UploadResponse{ID: string(job.ID)}
-
-		json.NewEncoder(w).Encode(res)
+		writeJSON(w, logger, http.StatusAccepted, res)
 
 	})
 }

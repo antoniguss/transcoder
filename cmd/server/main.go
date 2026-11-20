@@ -59,8 +59,9 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 	jobStore := server.NewJobStore()
 	runner := NewRunner(ctx, jobStore, logger, 5)
 	srv := &http.Server{
-		Addr:    *addr,
-		Handler: newHandler(logger, jobStore, runner, absDir),
+		Addr:              *addr,
+		Handler:           newHandler(logger, jobStore, runner, absDir),
+		ReadHeaderTimeout: 10 * time.Second,
 	}
 
 	errCh := make(chan error, 1)
@@ -79,7 +80,10 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 	defer cancel()
 
-	srv.Shutdown(shutdownCtx)
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		logger.Error("http server shutdown", "err", err)
+	}
+
 	runner.Wait()
 
 	return nil
