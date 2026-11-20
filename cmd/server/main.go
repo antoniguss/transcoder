@@ -57,10 +57,10 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 	logger.Info("using data dir", "path", absDir)
 
 	jobStore := server.NewJobStore()
-	runner := NewRunner(ctx, jobStore, logger, 5)
+	runner := server.NewRunner(ctx, jobStore, logger, 5)
 	srv := &http.Server{
 		Addr:              *addr,
-		Handler:           newHandler(logger, jobStore, runner, absDir),
+		Handler:           server.NewHandler(logger, jobStore, runner, absDir),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
