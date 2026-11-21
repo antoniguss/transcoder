@@ -19,7 +19,7 @@ import (
 func main() {
 
 	ctx := context.Background()
-	if err := run(ctx, os.Stdout, os.Args); err != nil {
+	if err := run(ctx, os.Stdout, os.Args[1:]); err != nil {
 		fmt.Fprintf(os.Stderr, "%s\n", err)
 		os.Exit(1)
 	}
@@ -35,7 +35,6 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 	fs := flag.NewFlagSet("server", flag.ContinueOnError)
 
 	addr := fs.String("addr", ":8080", "address to listen on")
-
 	dataDir := fs.String("data-dir", "data", "directory for uploads and outputs")
 
 	if err := fs.Parse(args); err != nil {
@@ -50,7 +49,7 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 		return fmt.Errorf("resolving data dir: %w", err)
 	}
 
-	if err := os.Mkdir(absDir, 0o750); err != nil {
+	if err := os.MkdirAll(absDir, 0o750); err != nil {
 		return fmt.Errorf("creating data dir: %w", err)
 	}
 
