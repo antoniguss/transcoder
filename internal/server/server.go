@@ -5,7 +5,7 @@ import (
 	"net/http"
 )
 
-func newHandler(
+func NewHandler(
 	logger *slog.Logger,
 	jobStore *JobStore,
 	runner *Runner,
@@ -13,7 +13,7 @@ func newHandler(
 ) http.Handler {
 
 	mux := http.NewServeMux()
-	mux.Handle("GET /healthz", handleHealths())
+	mux.Handle("GET /healthz", handleHealthz())
 	mux.Handle("POST /upload", handleUpload(logger, jobStore, runner, dataDir))
 	mux.Handle("GET /jobs/{id}", handleStatus(logger, jobStore))
 
