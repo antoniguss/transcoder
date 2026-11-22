@@ -6,8 +6,8 @@ import (
 )
 
 type TranscoderSpec struct {
-	Input   string `json:"input"`
-	Output  string `json:"output"`
+	Input   string `json:"input"`   // input file path
+	Output  string `json:"output"`  // output file path
 	Width   int    `json:"width"`   // pixels; 0 = keep aspect ration
 	Height  int    `json:"height"`  // pixels; 0 = keep aspect ration
 	Bitrate int    `json:"bitrate"` // bits per second; 0 = encoder default
