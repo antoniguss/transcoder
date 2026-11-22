@@ -36,6 +36,7 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 
 	addr := fs.String("addr", ":8080", "address to listen on")
 	dataDir := fs.String("data-dir", "data", "directory for uploads and outputs")
+	nWorkers := fs.Int("workers", 5, "number of workers to handle transcoding jobs")
 
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -56,7 +57,7 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 	logger.Info("using data dir", "path", absDir)
 
 	jobStore := server.NewJobStore()
-	runner := server.NewRunner(ctx, jobStore, logger, 5)
+	runner := server.NewRunner(ctx, jobStore, logger, *nWorkers)
 	srv := &http.Server{
 		Addr:              *addr,
 		Handler:           server.NewHandler(logger, jobStore, runner, absDir),

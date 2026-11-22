@@ -14,7 +14,7 @@ func NewHandler(
 
 	mux := http.NewServeMux()
 	mux.Handle("GET /healthz", handleHealthz())
-	mux.Handle("POST /upload", handleUpload(logger, jobStore, runner, dataDir))
+	mux.Handle("POST /upload", handleUpload(logger, jobStore, runner, dataDir, nWorkers))
 	mux.Handle("GET /jobs/{id}", handleStatus(logger, jobStore))
 
 	return mux
