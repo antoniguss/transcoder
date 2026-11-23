@@ -24,6 +24,7 @@ func NewJobID() JobID {
 type Job struct {
 	ID           JobID                    `json:"id"`
 	State        JobState                 `json:"state"`
+	Progress     transcode.Progress       `json:"progress"`
 	OriginalName string                   `json:"file"`
 	Spec         transcode.TranscoderSpec `json:"spec"`
 }

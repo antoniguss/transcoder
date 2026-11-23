@@ -3,11 +3,29 @@ package server
 import (
 	"errors"
 	"sync"
+
+	"github.com/antoniguss/transcoder/main/internal/transcode"
 )
 
 type JobStore struct {
 	mu   sync.Mutex
 	jobs map[JobID]Job
+}
+
+func (store *JobStore) SetProgress(id JobID, progress transcode.Progress) error {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+
+	job, has := store.jobs[id]
+
+	if !has {
+		return errors.New("job not found")
+	}
+
+	job.Progress = progress
+	store.jobs[id] = job
+
+	return nil
 }
 
 func NewJobStore() *JobStore {

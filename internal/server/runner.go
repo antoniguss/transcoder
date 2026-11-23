@@ -50,7 +50,13 @@ func (runner *Runner) worker(ctx context.Context) {
 				runner.logger.Error("changing state", "err", err, "job_id", job.ID)
 			}
 
-			if err := processTranscode(ctx, job); err != nil {
+			onProgress := func(progress transcode.Progress) {
+				if err := runner.store.SetProgress(job.ID, progress); err != nil {
+					runner.logger.Error("updating progress", "err", err)
+				}
+			}
+
+			if err := processTranscode(ctx, &job, onProgress); err != nil {
 				runner.logger.Error("worker transcoding", "err", err)
 
 				if err := runner.store.SetState(job.ID, StateError); err != nil {
@@ -84,10 +90,9 @@ func (runner *Runner) Wait() {
 	runner.wg.Wait()
 }
 
-func processTranscode(ctx context.Context, job Job) error {
-	// TODO: Launch transcoder. Pass
+func processTranscode(ctx context.Context, job *Job, onProgress func(transcode.Progress)) error {
 
-	if err := transcode.Run(ctx, job.Spec, func(p transcode.Progress) {}); err != nil {
+	if err := transcode.Run(ctx, job.Spec, onProgress); err != nil {
 		return fmt.Errorf("transcoding job: %w", err)
 	}
 

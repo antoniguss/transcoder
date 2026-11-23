@@ -6,8 +6,8 @@ import (
 )
 
 type StatusResponse struct {
-	State    string  `json:"state"`
-	Progress float32 `json:"progress"`
+	State    string   `json:"state"`
+	Progress *float64 `json:"progress"`
 }
 
 func handleStatus(logger *slog.Logger, jobStore *JobStore) http.Handler {
@@ -25,7 +25,14 @@ func handleStatus(logger *slog.Logger, jobStore *JobStore) http.Handler {
 			return
 		}
 
-		res := StatusResponse{State: string(job.State), Progress: 0.0}
+		var progress *float64
+		frac, has := job.Progress.Fraction()
+		logger.Info("returning status", progress)
+		if has {
+			progress = &frac
+		}
+
+		res := StatusResponse{State: string(job.State), Progress: progress}
 		writeJSON(w, logger, http.StatusOK, res)
 
 	})
