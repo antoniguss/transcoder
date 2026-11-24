@@ -35,6 +35,10 @@ func runFFmpeg(ctx context.Context, args []string, onProgress func(time.Duration
 	}
 
 	if err := cmd.Wait(); err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return fmt.Errorf("ffmpeg stopped: %w", ctxErr)
+		}
+
 		return fmt.Errorf("ffmpeg: %w: %s", err, strings.TrimSpace(stderr.String()))
 	}
 

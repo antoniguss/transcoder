@@ -11,7 +11,7 @@ type Progress struct {
 	Total     time.Duration
 }
 
-func (p Progress) Fraction() (float64, bool) {
+func (p Progress) Fraction() (f float64, has bool) {
 	if p.Total <= 0 {
 		return 0, false
 	}
