@@ -26,9 +26,17 @@ func handleStatus(logger *slog.Logger, jobStore *JobStore) http.Handler {
 		}
 
 		var progress *float64
-		frac, has := job.Progress.Fraction()
-		if has {
-			progress = &frac
+
+		switch job.State {
+		case StateDone:
+			*progress = 1.0
+		case StateSubmitted, StateError:
+			*progress = 0
+		case StateTranscoding:
+			frac, has := job.Progress.Fraction()
+			if has {
+				*progress = frac
+			}
 		}
 
 		res := StatusResponse{State: string(job.State), Progress: progress}
