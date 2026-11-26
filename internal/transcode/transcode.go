@@ -2,7 +2,6 @@ package transcode
 
 import (
 	"context"
-	"log"
 	"time"
 )
 
@@ -27,7 +26,6 @@ func Run(ctx context.Context, spec TranscoderSpec, onProgress func(Progress)) er
 
 	total, err := probeDuration(ctx, spec.Input)
 	if err != nil {
-		log.Printf("probe to get duration: %v", err)
 		total = 0
 	}
 
