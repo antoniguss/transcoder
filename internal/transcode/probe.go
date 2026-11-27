@@ -7,6 +7,7 @@ import (
 	"log"
 	"os/exec"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -38,5 +39,23 @@ func probeDuration(ctx context.Context, input string) (time.Duration, error) {
 	}
 
 	return time.Duration(secs * float64(time.Second)), nil
+
+}
+
+func probeStreams(ctx context.Context, input string) ([]string, error) {
+	cmd := exec.CommandContext(ctx, "ffprobe",
+		"-loglevel", "error",
+		"-show_entries", "stream=codec_type",
+		"-of", "csv=p=0",
+		input)
+	log.Printf("cmd: %v\n", cmd)
+
+	var streams []string
+	data, err := cmd.Output()
+	if err != nil {
+		return streams, fmt.Errorf("probing for streams: %w", err)
+	}
+
+	return strings.Fields(string(data)), nil
 
 }

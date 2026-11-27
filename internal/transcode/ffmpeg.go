@@ -16,6 +16,7 @@ import (
 func runFFmpeg(ctx context.Context, args []string, onProgress func(time.Duration)) (err error) {
 
 	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
+	fmt.Printf("cmd: %v\n", cmd)
 
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr

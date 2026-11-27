@@ -92,7 +92,7 @@ func (runner *Runner) Wait() {
 
 func processTranscode(ctx context.Context, job *Job, onProgress func(transcode.Progress)) error {
 
-	if err := transcode.Run(ctx, job.Spec, onProgress); err != nil {
+	if err := transcode.RunHLS(ctx, job.Spec, onProgress); err != nil {
 		return fmt.Errorf("transcoding job: %w", err)
 	}
 

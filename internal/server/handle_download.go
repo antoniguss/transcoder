@@ -5,6 +5,7 @@ import (
 	"net/http"
 )
 
+// TODO: Serve playlist and any related files
 func handleDownload(logger *slog.Logger, jobStore *JobStore, dataDir string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
@@ -21,7 +22,7 @@ func handleDownload(logger *slog.Logger, jobStore *JobStore, dataDir string) htt
 		}
 
 		w.Header().Set("Content-Desposition", `attachment; filename="`+job.OriginalName+`"`)
-		http.ServeFile(w, r, job.Spec.Output)
+		http.ServeFile(w, r, job.Spec.OutputDir)
 
 	})
 }

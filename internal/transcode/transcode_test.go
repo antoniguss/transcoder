@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -173,4 +174,23 @@ func TestRun_Cancel(t *testing.T) {
 	if !errors.Is(err, context.Canceled) {
 		t.Errorf("err = %v; want it to wrap context.Canceled", err)
 	}
+}
+
+func TestRunHLS(t *testing.T) {
+	in := makeTestClip(t, 15)
+	testDir := t.TempDir()
+
+	ctx := t.Context()
+
+	spec := transcode.HLSSpec{InputFile: in, OutputDir: testDir}
+	if err := transcode.RunHLS(ctx, spec, func(p transcode.Progress) {}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	filepath.Walk(testDir, func(path string, info fs.FileInfo, err error) error {
+		fmt.Println(path)
+		return nil
+	})
+	fmt.Printf("testDir: %v\n", testDir)
+
 }

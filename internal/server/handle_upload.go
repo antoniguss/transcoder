@@ -49,8 +49,17 @@ func handleUpload(logger *slog.Logger, jobStore *JobStore, runner *Runner, dataD
 
 		id := NewJobID()
 
-		jobDir, err := saveUpload(dataDir, id, file)
+		jobDir, err := setupJobDir(dataDir, id)
 		if err != nil {
+			logger.Error("creating job dir", "job_dir", jobDir, "err", err)
+			http.Error(w, "could not save upload", http.StatusInternalServerError)
+			return
+		}
+
+		inputFile := filepath.Join(jobDir, "input", "input.mp4")
+		outputDir := filepath.Join(jobDir, "output", "hls")
+
+		if err := saveUpload(inputFile, id, file); err != nil {
 			logger.Error("saving upload", "job_id", id, "err", err)
 			http.Error(w, "could not save upload", http.StatusInternalServerError)
 			return
@@ -60,9 +69,9 @@ func handleUpload(logger *slog.Logger, jobStore *JobStore, runner *Runner, dataD
 			ID:           id,
 			State:        StateSubmitted,
 			OriginalName: header.Filename,
-			Spec: transcode.TranscoderSpec{
-				Input:  filepath.Join(jobDir, "input"),
-				Output: filepath.Join(jobDir, "output.mp4"),
+			Spec: transcode.HLSSpec{
+				InputFile: inputFile,
+				OutputDir: outputDir,
 			},
 		}
 
@@ -84,25 +93,40 @@ func handleUpload(logger *slog.Logger, jobStore *JobStore, runner *Runner, dataD
 	})
 }
 
-func saveUpload(dataDir string, jobID JobID, src io.Reader) (string, error) {
+// Sets up the input and output directory, under <dataDir>/<jobID>
+func setupJobDir(dataDir string, jobID JobID) (string, error) {
+
 	jobDir := filepath.Join(dataDir, string(jobID))
 	if err := os.MkdirAll(jobDir, 0o750); err != nil {
 		return "", fmt.Errorf("creating job dir: %w", err)
 	}
 
-	inputPath := filepath.Join(jobDir, "input")
-	dst, err := os.Create(inputPath)
-	if err != nil {
-		return "", fmt.Errorf("creating input file: %w", err)
+	inputDir := filepath.Join(jobDir, "input")
+	if err := os.MkdirAll(inputDir, 0o750); err != nil {
+		return "", fmt.Errorf("creating input dir: %w", err)
 	}
-	if _, err := io.Copy(dst, src); err != nil {
-		dst.Close()
-		return "", fmt.Errorf("writing to input file: %w", err)
-	}
-	if err := dst.Close(); err != nil {
-		return "", fmt.Errorf("closing input file: %w", err)
+	outputDir := filepath.Join(jobDir, "output", "hls")
+	if err := os.MkdirAll(outputDir, 0o750); err != nil {
+		return "", fmt.Errorf("creating input dir: %w", err)
 	}
 
 	return jobDir, nil
+}
+
+func saveUpload(inputFile string, jobID JobID, src io.Reader) error {
+
+	dst, err := os.Create(inputFile)
+	if err != nil {
+		return fmt.Errorf("creating input file: %w", err)
+	}
+	if _, err := io.Copy(dst, src); err != nil {
+		dst.Close()
+		return fmt.Errorf("writing to input file: %w", err)
+	}
+	if err := dst.Close(); err != nil {
+		return fmt.Errorf("closing input file: %w", err)
+	}
+
+	return nil
 
 }

@@ -2,6 +2,7 @@ package transcode
 
 import (
 	"context"
+	"slices"
 	"time"
 )
 
@@ -16,6 +17,20 @@ func (p Progress) Fraction() (f float64, has bool) {
 	}
 
 	return min(float64(p.Processed)/float64(p.Total), 1), true
+}
+
+func RunHLS(ctx context.Context, spec HLSSpec, onProgress func(Progress)) error {
+
+	s, err := probeStreams(ctx, spec.InputFile)
+	if err != nil {
+		return err
+	}
+
+	hasAudio := slices.Contains(s, "audio")
+	args := buildHLSArgs(spec, hasAudio)
+
+	return runFFmpeg(ctx, args, func(d time.Duration) {})
+
 }
 
 func Run(ctx context.Context, spec TranscoderSpec, onProgress func(Progress)) error {

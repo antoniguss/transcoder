@@ -14,6 +14,72 @@ type TranscoderSpec struct {
 	Preset  Preset `json:"preset"`
 }
 
+type HLSSpec struct {
+	InputFile  string      `json:"input"`      // Path to input file
+	OutputDir  string      `json:"output"`     // Path to output directory
+	Renditions []Rendition `json:"renditions"` // Optional: required renditions, default Ladder used if none provided
+}
+
+type Rendition struct {
+	Name         string
+	Width        int
+	Height       int
+	VideoBitrate int
+	AudioBitrate int
+}
+
+var Ladder = []Rendition{
+	{
+		Name:         "top1080p",
+		Width:        1920,
+		Height:       1080,
+		VideoBitrate: 6000_000,
+		AudioBitrate: 128_000,
+	},
+	{
+		Name:         "high720p",
+		Width:        1280,
+		Height:       720,
+		VideoBitrate: 4500_000,
+		AudioBitrate: 128_000,
+	},
+	{
+		Name:         "low720p",
+		Width:        1280,
+		Height:       720,
+		VideoBitrate: 3000_000,
+		AudioBitrate: 128_000,
+	},
+	{
+		Name:         "540p",
+		Width:        960,
+		Height:       540,
+		VideoBitrate: 2000_000,
+		AudioBitrate: 128_000,
+	},
+	{
+		Name:         "high432p",
+		Width:        768,
+		Height:       432,
+		VideoBitrate: 1100_000,
+		AudioBitrate: 128_000,
+	},
+	{
+		Name:         "low432p",
+		Width:        768,
+		Height:       432,
+		VideoBitrate: 730_000,
+		AudioBitrate: 128_000,
+	},
+	{
+		Name:         "234p",
+		Width:        416,
+		Height:       234,
+		VideoBitrate: 730_000,
+		AudioBitrate: 128_000,
+	},
+}
+
 type Preset string
 
 const (
